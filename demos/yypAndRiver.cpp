@@ -2,6 +2,11 @@
 #include <unistd.h>
 #include <thread>
 #include <mutex>
+#include <random>
+#include <functional>
+#include <vector>
+#include <algorithm>
+#include <time.h>
 
 enum enumDirection
 {
@@ -97,6 +102,9 @@ public:
 	}
 };
 
+
+typedef std::function<int(void)> diceFuncType;
+
 class Water
 {
 private:
@@ -106,23 +114,75 @@ private:
     int _widthY;
     WINDOW * _waterWin;
     bool _isClear;
+	std::vector<std::pair<int, int> > _bridge;
+private:
+	diceFuncType makeDice(int min, int max)
+	{
+		std::default_random_engine generator(time(0));
+		std::uniform_int_distribution<int> distribution(min, max);
+		return std::bind ( distribution, generator );
+	}
+	void randomBridge()
+	{
+		//mvprintw(0,0,"%d",_dice());
+
+		/* make dices */
+		auto diceMove = makeDice(-50,50);
+		auto diceEntryPosition = makeDice(_initY, _widthY);
+
+		/* make Bridge */
+		int yy = diceEntryPosition();
+		int lastYY;
+		for ( int xx = /*_initX*/ 0; xx <= _initX + _heightX; ++ xx )
+		{
+			if ( yy < 0 )
+				yy = 0;
+			if ( yy > _widthY )
+				yy = _widthY;
+			_bridge.push_back( std::pair<int, int>(xx,yy) );
+			lastYY = yy;
+			/*change yy randomly*/
+			yy += diceMove();
+			/* make bridge connected */
+			//printw("lastYY:%d,yy:%d",lastYY,yy);
+			//getch();
+			while( lastYY != yy )
+			{
+				_bridge.push_back( std::pair<int, int>(xx,lastYY) );
+				if (lastYY < yy)
+					++ lastYY;
+				else
+					-- lastYY;
+			}
+			_bridge.push_back( std::pair<int, int>(xx,lastYY) );
+		}
+	}
+	bool isInBridge(int x, int y)
+	{
+	//	mvprintw(0,0,"x:%d,y:%d",x,y);
+		if ( std::find(_bridge.begin(),_bridge.end(),std::pair<int, int>(x,y)) != _bridge.end() )
+			return true;
+		return false;
+	}
 public:
     Water()
     :
     _initX(10),
-    _initY(5),
+    _initY(0),
     _heightX(10),
-    _widthY(COLS - 2 * _initY),
+    _widthY(COLS - 0 * _initY),
     _isClear(false)
     {
         
         /* init window */
         _waterWin = newwin(_heightX, _widthY, _initX, _initY );
         wrefresh(_waterWin);
+		/*init bridge*/
+		randomBridge();
     }
     bool isInWater(int x, int y)
     {
-        if ( x >= _initX && x < _initX + _heightX && y >= _initY && y <= _widthY + 4 )
+        if ( (!isInBridge(x-_initX,y-_initY)) && (x >= _initX && x < _initX + _heightX && y >= _initY && y <= _widthY + 4 ) )
             return true;
         return false;
     }
@@ -154,6 +214,8 @@ public:
                 for ( int i = 0; i <= _heightX; ++ i )
                     for ( int j = 0; j <= _widthY; ++ j )
                     {
+						if ( isInBridge(i,j) )
+							continue;
                         if ( (i+j) % 3 == step )
                             mvwaddch(_waterWin,i,j,'~');
                         else
